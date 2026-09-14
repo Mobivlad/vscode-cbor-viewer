@@ -106,6 +106,16 @@
           }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "cborViewer.editor.option",
+        "displayName": "Extended CBOR Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*"
+          }
+        ],
+        "priority": "option"
       }
     ]
   },

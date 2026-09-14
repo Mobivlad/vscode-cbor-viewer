@@ -49,7 +49,20 @@ export function activate(context: vscode.ExtensionContext) {
         }
     );
 
-    context.subscriptions.push(providerRegistration);
+    // Optional (opt-in) registration: lets users reopen arbitrary files (e.g. *.bin) with the
+    // CBOR Viewer via "Reopen Editor With…" without becoming the default editor for them.
+    const optionalProviderRegistration = vscode.window.registerCustomEditorProvider(
+        'cborViewer.editor.option',
+        provider,
+        {
+            webviewOptions: {
+                retainContextWhenHidden: true,
+            },
+            supportsMultipleEditorsPerDocument: false,
+        }
+    );
+
+    context.subscriptions.push(providerRegistration, optionalProviderRegistration);
 }
 
 /**
