@@ -405,10 +405,16 @@ export class CborEditorProvider implements vscode.CustomReadonlyEditorProvider {
         const thresholdMiB = vscode.workspace.getConfiguration('cborViewer').get<number>('streamingThresholdMiB', 5);
         const thresholdBytes = Math.max(0, Math.floor((thresholdMiB ?? 5) * 1024 * 1024));
 
+        const numericKeyFormat: 'decimal' | 'hex' = vscode.workspace.getConfiguration('cborViewer').get<string>('numericKeyFormat', 'decimal') === 'hex' ? 'hex' : 'decimal';
+        const viewOptions = {
+            ...(intent === 'coseHeaders' ? { prettyRootType: 'coseHeaders' as const } : {}),
+            numericKeyFormat
+        };
+
         if (thresholdBytes > 0 && uri.scheme === 'file' && stat.size >= thresholdBytes) {
             const decoded = await this.decodeLargeFileStream(uri);
             this.decodedRootByUri.set(uri.toString(), decoded);
-            return decodeCborDecodedValueWithViews(decoded, stat.size, intent === 'coseHeaders' ? { prettyRootType: 'coseHeaders' } : undefined);
+            return decodeCborDecodedValueWithViews(decoded, stat.size, viewOptions);
         }
 
         const fileData = await vscode.workspace.fs.readFile(uri);
@@ -416,7 +422,7 @@ export class CborEditorProvider implements vscode.CustomReadonlyEditorProvider {
         const buffer = Buffer.from(fileData);
         const decoded = decodeAllOrFirst(buffer);
         this.decodedRootByUri.set(uri.toString(), decoded);
-        return decodeCborDecodedValueWithViews(decoded, buffer.length, intent === 'coseHeaders' ? { prettyRootType: 'coseHeaders' } : undefined);
+        return decodeCborDecodedValueWithViews(decoded, buffer.length, viewOptions);
     }
 
     /**

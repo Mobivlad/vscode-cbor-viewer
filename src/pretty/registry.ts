@@ -36,6 +36,9 @@ export interface PrettyFormatterContext {
     /** Produce a bytes preview object and register blob handles. */
     bytesPreview(bytes: Buffer, existingBlobId?: string): unknown;
 
+    /** Render a map key as an object property name, honoring the numeric key format (decimal/hex). */
+    mapKey(key: unknown): string;
+
     /** Extensible label lookup for known header/claim ids. */
     labels: {
         getCoseHeaderName(labelId: number | null): string;

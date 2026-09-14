@@ -7,7 +7,7 @@
  */
 import type { PrettyFormatter, PrettyFormatterContext } from '../../registry';
 import type { CwtClaimValue, CwtClaimsInfo } from './cwtClaimsTypes';
-import { asCborMap, mapKeyToString, toBuffer } from '../../util';
+import { asCborMap, toBuffer } from '../../util';
 import { toInt32 } from '../../core/numeric';
 
 /**
@@ -264,7 +264,7 @@ function formatMapFallback(ctx: PrettyFormatterContext, value: unknown): Record<
 
     const out: Record<string, unknown> = {};
     for (const [k, v] of map.entries()) {
-        out[mapKeyToString(k)] = ctx.format(v, ctx.depth + 2);
+        out[ctx.mapKey(k)] = ctx.format(v, ctx.depth + 2);
     }
     return out;
 }

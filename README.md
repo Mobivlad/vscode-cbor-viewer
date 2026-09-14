@@ -164,7 +164,7 @@ See the docs directory for architecture and extension guides:
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - npm 9+
 - Visual Studio Code 1.93.0+
 
@@ -270,6 +270,13 @@ Note: streaming is only used for local `file:` URIs. For remote/virtual schemes,
 - Default: `pretty`
 - Values: `pretty` | `raw`
 - Meaning: Controls which view mode the viewer starts in.
+
+### `cborViewer.numericKeyFormat`
+
+- Type: string
+- Default: `decimal`
+- Values: `decimal` | `hex`
+- Meaning: Controls how numeric CBOR map keys and label ids (e.g. COSE header / CWT claim labels) are displayed in the decoded output. `decimal` shows base-10 numbers (e.g. `4`); `hex` shows `0x`-prefixed hexadecimal (e.g. `0x4`). Applies to both the pretty and raw views.
 
 ## Hex Editor dependency
 

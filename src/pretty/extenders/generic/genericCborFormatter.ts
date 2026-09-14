@@ -7,7 +7,7 @@
  */
 import * as cbor from 'cbor';
 import type { PrettyFormatter, PrettyFormatterContext } from '../../registry';
-import { mapKeyToString, toBuffer } from '../../util';
+import { toBuffer } from '../../util';
 
 /**
  * Generic CBOR expansion fallback.
@@ -49,7 +49,7 @@ export const GenericCborFormatter: PrettyFormatter = {
         if (value instanceof Map) {
             const result: Record<string, unknown> = {};
             for (const [k, v] of value.entries()) {
-                result[mapKeyToString(k)] = ctx.format(v, ctx.depth + 1);
+                result[ctx.mapKey(k)] = ctx.format(v, ctx.depth + 1);
             }
             return result;
         }

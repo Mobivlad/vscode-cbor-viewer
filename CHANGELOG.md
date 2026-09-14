@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- New setting `cborViewer.numericKeyFormat` (`decimal` | `hex`) to display numeric CBOR map keys / label ids as hexadecimal in the pretty and raw views
+
 ## [0.7.2]
 
 ### Security

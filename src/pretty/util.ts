@@ -56,6 +56,17 @@ export function asCborMap(value: unknown): Map<unknown, unknown> | null {
     return null;
 }
 
+/** How numeric CBOR map keys / label ids are rendered. */
+export type NumericKeyFormat = 'decimal' | 'hex';
+
+/** Render an integer map-key value as a `0x`-prefixed hex string (handles negatives and bigint). */
+export function numericKeyToHex(value: number | bigint): string {
+    if (typeof value === 'bigint') {
+        return value < 0n ? `-0x${(-value).toString(16)}` : `0x${value.toString(16)}`;
+    }
+    return value < 0 ? `-0x${(-value).toString(16)}` : `0x${value.toString(16)}`;
+}
+
 function bufferToHex(buffer: Buffer): string {
     return buffer.toString('hex');
 }
@@ -83,11 +94,18 @@ function convertBuffersToHex(obj: unknown): string | Record<string, unknown> | u
     return obj;
 }
 
-export function mapKeyToString(key: unknown): string {
+export function mapKeyToString(key: unknown, format: NumericKeyFormat = 'decimal'): string {
     if (typeof key === 'string') {
         return key;
     }
-    if (typeof key === 'number' || typeof key === 'bigint' || typeof key === 'boolean') {
+    if (typeof key === 'number' || typeof key === 'bigint') {
+        const isInteger = typeof key === 'bigint' || Number.isInteger(key);
+        if (format === 'hex' && isInteger) {
+            return numericKeyToHex(key);
+        }
+        return String(key);
+    }
+    if (typeof key === 'boolean') {
         return String(key);
     }
     const b = toBuffer(key);

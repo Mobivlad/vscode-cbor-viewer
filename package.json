@@ -35,6 +35,19 @@
             "raw"
           ],
           "description": "Default rendering mode for the CBOR Viewer. 'pretty' shows an inspection-style view (COSE-aware, embedded decode); 'raw' shows a structure-oriented view that preserves CBOR map keys."
+        },
+        "cborViewer.numericKeyFormat": {
+          "type": "string",
+          "default": "decimal",
+          "enum": [
+            "decimal",
+            "hex"
+          ],
+          "enumDescriptions": [
+            "Show numeric CBOR map keys / label ids as decimal (e.g. 4).",
+            "Show numeric CBOR map keys / label ids as hexadecimal (e.g. 0x4)."
+          ],
+          "description": "How numeric CBOR map keys and label ids are displayed in the decoded output. 'decimal' shows them as base-10 numbers; 'hex' shows them as 0x-prefixed hexadecimal."
         }
       }
     },
