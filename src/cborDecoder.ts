@@ -74,6 +74,8 @@ export interface DecodeViewsOptions {
     prettyRootType?: 'coseHeaders';
     /** How numeric CBOR map keys / label ids are rendered. Defaults to 'decimal'. */
     numericKeyFormat?: NumericKeyFormat;
+    /** Whether to surface COSE signature/tag byte values (size + hex preview). Defaults to true. */
+    showSignatureBytes?: boolean;
 }
 
 /**
@@ -157,6 +159,7 @@ export function decodeCborDecodedValueWithBlobs(decoded: unknown, totalSizeBytes
 export function decodeCborDecodedValueWithViews(decoded: unknown, totalSizeBytes: number, options?: DecodeViewsOptions): DecodeViewsResult {
     const ctx: PrettyDecodeContext = createPrettyDecodeContext();
     const numericKeyFormat: NumericKeyFormat = options?.numericKeyFormat ?? 'decimal';
+    const showSignatureBytes: boolean = options?.showSignatureBytes ?? true;
     const prettyInput = (() => {
         if (options?.prettyRootType === 'coseHeaders') {
             // Intentionally “wrap” the decoded value so the pretty formatter registry can
@@ -170,7 +173,7 @@ export function decodeCborDecodedValueWithViews(decoded: unknown, totalSizeBytes
         return decoded;
     })();
 
-    const pretty = buildPrettyView(ctx, prettyInput, totalSizeBytes, { numericKeyFormat });
+    const pretty = buildPrettyView(ctx, prettyInput, totalSizeBytes, { numericKeyFormat, showSignatureBytes });
 
     // Handle CBOR Sequences (RFC 8742) in raw view: expand each element independently.
     let raw: unknown;

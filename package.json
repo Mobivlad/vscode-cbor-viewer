@@ -48,6 +48,11 @@
             "Show numeric CBOR map keys / label ids as hexadecimal (e.g. 0x4)."
           ],
           "description": "How numeric CBOR map keys and label ids are displayed in the decoded output. 'decimal' shows them as base-10 numbers; 'hex' shows them as 0x-prefixed hexadecimal."
+        },
+        "cborViewer.showSignatureBytes": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the COSE signature / tag / authentication tag byte value (size and hex preview) in the decoded output. When disabled, only the total message size is shown."
         }
       }
     },

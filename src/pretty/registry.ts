@@ -39,6 +39,9 @@ export interface PrettyFormatterContext {
     /** Render a map key as an object property name, honoring the numeric key format (decimal/hex). */
     mapKey(key: unknown): string;
 
+    /** Whether to surface COSE signature/tag byte values (size + hex preview) in the output. */
+    showSignatureBytes: boolean;
+
     /** Extensible label lookup for known header/claim ids. */
     labels: {
         getCoseHeaderName(labelId: number | null): string;

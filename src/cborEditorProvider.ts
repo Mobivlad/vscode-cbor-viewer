@@ -473,9 +473,11 @@ export class CborEditorProvider implements vscode.CustomReadonlyEditorProvider {
         const thresholdBytes = Math.max(0, Math.floor((thresholdMiB ?? 5) * 1024 * 1024));
 
         const numericKeyFormat: 'decimal' | 'hex' = vscode.workspace.getConfiguration('cborViewer').get<string>('numericKeyFormat', 'decimal') === 'hex' ? 'hex' : 'decimal';
+        const showSignatureBytes = vscode.workspace.getConfiguration('cborViewer').get<boolean>('showSignatureBytes', true) !== false;
         const viewOptions = {
             ...(intent === 'coseHeaders' ? { prettyRootType: 'coseHeaders' as const } : {}),
-            numericKeyFormat
+            numericKeyFormat,
+            showSignatureBytes
         };
 
         if (thresholdBytes > 0 && uri.scheme === 'file' && stat.size >= thresholdBytes) {

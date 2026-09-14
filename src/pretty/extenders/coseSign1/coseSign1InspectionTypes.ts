@@ -52,5 +52,8 @@ export interface PayloadInfo {
 }
 
 export interface SignatureInfo {
+    /** Size (bytes) of the whole COSE message, when known. */
     totalSizeBytes: number;
+    /** Truncated hex/bytes preview of the signature value, when present. */
+    bytes?: BytesPreview;
 }

@@ -15,6 +15,8 @@ export interface BuildPrettyViewOptions {
     maxDepth?: number;
     /** How numeric map keys / label ids are rendered. Defaults to 'decimal'. */
     numericKeyFormat?: NumericKeyFormat;
+    /** Whether to surface COSE signature/tag byte values (size + hex preview). Defaults to true. */
+    showSignatureBytes?: boolean;
 }
 
 /**
@@ -35,6 +37,7 @@ export function buildPrettyView(ctx: PrettyDecodeContext, decoded: unknown, tota
     const registry = createDefaultPrettyFormatterRegistry();
     const maxDepth = options?.maxDepth ?? MAX_EMBEDDED_DECODE_DEPTH;
     const numericKeyFormat: NumericKeyFormat = options?.numericKeyFormat ?? 'decimal';
+    const showSignatureBytes: boolean = options?.showSignatureBytes ?? true;
 
     // Label registry is a lightweight extension point: extenders can register
     // well-known numeric ids without touching core formatters.
@@ -93,6 +96,7 @@ export function buildPrettyView(ctx: PrettyDecodeContext, decoded: unknown, tota
             tryDecodeEmbedded: (bytes, nextDepth) => tryDecodeEmbedded(bytes, nextDepth),
             bytesPreview: (bytes, existingBlobId) => createBytesPreview(ctx, bytes, existingBlobId),
             mapKey: (key) => mapKeyToString(key, numericKeyFormat),
+            showSignatureBytes,
             labels: {
                 getCoseHeaderName(labelId: number | null): string {
                     if (labelId === null) {

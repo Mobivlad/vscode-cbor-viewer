@@ -69,7 +69,7 @@ function inspectCoseSign1(ctx: PrettyFormatterContext, data: unknown[], totalSiz
         protectedHeaders,
         unprotectedHeaders,
         payload: buildPayloadInfo(ctx, payload, contentType),
-        signature: buildSignatureInfo(totalSizeBytes)
+        signature: buildSignatureInfo(ctx, data[3], totalSizeBytes)
     };
 
     cleanEmptyHeaders(result);

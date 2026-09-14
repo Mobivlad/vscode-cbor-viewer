@@ -301,6 +301,25 @@ suite('Unit: cborDecoder views (pretty/raw)', () => {
         assert.ok(Array.isArray((raw as any)) || raw._type === 'array' || raw._type === 'map' || typeof raw === 'object');
     });
 
+    test('COSE_Sign1 signature bytes are surfaced by default and gated by showSignatureBytes', () => {
+        const protectedMap = new Map<number, unknown>([[1, -7]]);
+        const protectedHeaders = cbor.encodeOne(protectedMap);
+        const coseSign1 = [protectedHeaders, new Map(), Buffer.from('p'), Buffer.from('signature-bytes')];
+        const tagged = new (cbor as any).Tagged(18, coseSign1);
+
+        const shown: any = decodeCborDecodedValueWithViews(tagged, 0, { showSignatureBytes: true }).pretty;
+        assert.ok(shown.signature);
+        assert.strictEqual(shown.signature.sizeBytes, undefined);
+        assert.ok(shown.signature.bytes);
+        assert.strictEqual(shown.signature.bytes._type, 'bytes');
+        assert.strictEqual(shown.signature.bytes.lengthBytes, Buffer.from('signature-bytes').length);
+
+        const hidden: any = decodeCborDecodedValueWithViews(tagged, 0, { showSignatureBytes: false }).pretty;
+        assert.ok(hidden.signature);
+        assert.strictEqual(hidden.signature.bytes, undefined);
+        assert.strictEqual(typeof hidden.signature.totalSizeBytes, 'number');
+    });
+
     test('decoding a COSE protected headers map alone formats as COSE headers (not CWT claims)', () => {
         const claims = new Map<number, unknown>([[1, 'issuer.example']]);
         const protectedMap = new Map<number, unknown>([

@@ -6,7 +6,7 @@
  * Each signature: [protected, unprotected, signature]
  */
 import type { PrettyFormatter, PrettyFormatterContext } from '../../registry';
-import type { CoseHeaders, CoseInspectionResult, PayloadInfo } from '../coseSign1/coseSign1InspectionTypes';
+import type { CoseHeaders, CoseInspectionResult, PayloadInfo, SignatureInfo } from '../coseSign1/coseSign1InspectionTypes';
 import { asCborMap, toBuffer } from '../../util';
 import {
     buildCoseHeadersMap,
@@ -34,6 +34,7 @@ interface CoseSignerInfo {
     index: number;
     protectedHeaders?: CoseHeaders;
     unprotectedHeaders?: CoseHeaders;
+    signature?: SignatureInfo;
 }
 
 function isLikelyCoseSign(value: unknown): value is unknown[] {
@@ -100,6 +101,8 @@ export const CoseSignFormatter: PrettyFormatter = {
                 signer.protectedHeaders = buildCoseHeadersMap(ctx, sigProtMap);
                 signer.unprotectedHeaders = buildCoseHeadersMap(ctx, sigUnprotMap);
                 delegateAndMergeHeaders(ctx, sigProtMap, sigUnprotMap, signer.protectedHeaders, signer.unprotectedHeaders);
+                const sigBytesLen = toBuffer(sig[2])?.length ?? 0;
+                signer.signature = buildSignatureInfo(ctx, sig[2], sigBytesLen);
                 cleanEmptyHeaders(signer);
             }
             return signer;
@@ -110,7 +113,7 @@ export const CoseSignFormatter: PrettyFormatter = {
             unprotectedHeaders,
             payload: buildPayloadInfo(ctx, payload, contentType),
             signatures,
-            signature: buildSignatureInfo(totalSizeBytes)
+            signature: buildSignatureInfo(ctx, undefined, totalSizeBytes)
         };
 
         cleanEmptyHeaders(result);
