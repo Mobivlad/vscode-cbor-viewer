@@ -1,6 +1,6 @@
 {
   "name": "vscode-cbor-viewer",
-  "displayName": "CBOR Viewer",
+  "displayName": "Extended CBOR Viewer",
   "version": "0.7.2",
   "description": "Decode and view CBOR-encoded files as human-readable JSON. Supports all COSE message types (Sign1, Sign, Encrypt0, Encrypt, Mac0, Mac), CBOR Sequences, countersignatures, CWT tokens, date/time tags, and typed arrays with inspection-style output for troubleshooting.",
   "publisher": "JeromyStatia",
@@ -19,7 +19,7 @@
   ],
   "contributes": {
     "configuration": {
-      "title": "CBOR Viewer",
+      "title": "Extended CBOR Viewer",
       "properties": {
         "cborViewer.streamingThresholdMiB": {
           "type": "number",
@@ -42,12 +42,12 @@
       {
         "command": "cborViewer.openHex",
         "title": "Open in Hex Editor",
-        "category": "CBOR Viewer"
+        "category": "Extended CBOR Viewer"
       },
       {
         "command": "cborViewer.decodeSelectionAsCbor",
         "title": "Decode Selection as CBOR",
-        "category": "CBOR Viewer"
+        "category": "Extended CBOR Viewer"
       }
     ],
     "menus": {
@@ -80,7 +80,7 @@
     "customEditors": [
       {
         "viewType": "cborViewer.editor",
-        "displayName": "CBOR Viewer",
+        "displayName": "Extended CBOR Viewer",
         "selector": [
           {
             "filenamePattern": "*.cbor"
