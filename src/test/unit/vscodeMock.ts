@@ -9,12 +9,15 @@ export type CommandHandler = (...args: any[]) => any;
 
 export interface VscodeMockState {
     registeredCommands: Map<string, CommandHandler>;
-    executedCommands: Array<{ command: string; args: any[] }>; 
+    executedCommands: Array<{ command: string; args: any[] }>;
     infoMessages: string[];
     errorMessages: string[];
     shownTextDocuments: any[];
     registeredFileSystems: Array<{ scheme: string }>;
     registeredCustomEditors: Array<{ viewType: string }>;
+
+    savedFiles: Array<{ uri: any; bytes: Uint8Array }>;
+    saveDialogResult?: any;
 
     configuration: Record<string, unknown>;
 
@@ -152,6 +155,7 @@ export function createVscodeMock(initial?: Partial<VscodeMockState>) {
         shownTextDocuments: [],
         registeredFileSystems: [],
         registeredCustomEditors: [],
+        savedFiles: [],
         configuration: {},
         activeTextEditor: undefined,
         ...initial
@@ -177,6 +181,9 @@ export function createVscodeMock(initial?: Partial<VscodeMockState>) {
                 },
                 readFile: async (uri: any) => {
                     return new Uint8Array(fs.readFileSync(uri.fsPath));
+                },
+                writeFile: async (uri: any, content: Uint8Array) => {
+                    state.savedFiles.push({ uri, bytes: content });
                 }
             },
             getConfiguration: (_section: string) => ({
@@ -209,6 +216,9 @@ export function createVscodeMock(initial?: Partial<VscodeMockState>) {
             showTextDocument: async (doc: any, _opts: any) => {
                 state.shownTextDocuments.push(doc);
                 return undefined;
+            },
+            showSaveDialog: async (_opts: any) => {
+                return state.saveDialogResult;
             },
             registerCustomEditorProvider: (viewType: string, _provider: any, _opts: any) => {
                 state.registeredCustomEditors.push({ viewType });

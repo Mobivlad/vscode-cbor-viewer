@@ -79,7 +79,8 @@
         contextMenuItems: [
           { label: 'Open in Hex Editor', message: { type: 'openHexBlob', blobId: '$blobId' } },
           { label: 'Decode as CBOR', message: { type: 'decodeAsCbor', kind: 'blobId', blobId: '$blobId' } },
-          { label: 'Decode as COSE Headers', message: { type: 'decodeAsCoseHeaders', kind: 'blobId', blobId: '$blobId' } }
+          { label: 'Decode as COSE Headers', message: { type: 'decodeAsCoseHeaders', kind: 'blobId', blobId: '$blobId' } },
+          { label: 'Save bin', message: { type: 'saveBlob', blobId: '$blobId' } }
         ]
       },
       {
@@ -91,7 +92,8 @@
           { label: 'Open as Text', message: { type: 'openTextBlob', blobId: '$blobId' } },
           { label: 'Open in Hex Editor', message: { type: 'openHexBlob', blobId: '$blobId' } },
           { label: 'Decode as CBOR', message: { type: 'decodeAsCbor', kind: 'blobId', blobId: '$blobId' } },
-          { label: 'Decode as COSE Headers', message: { type: 'decodeAsCoseHeaders', kind: 'blobId', blobId: '$blobId' } }
+          { label: 'Decode as COSE Headers', message: { type: 'decodeAsCoseHeaders', kind: 'blobId', blobId: '$blobId' } },
+          { label: 'Save bin', message: { type: 'saveBlob', blobId: '$blobId' } }
         ],
         truncateChars: 120,
         titleIsFullValue: true
@@ -668,6 +670,10 @@
             label: 'Decode as COSE Headers',
             message: { type: 'decodeAsCoseHeaders', kind: 'blobId', blobId: parsed._hexBlobId }
           });
+          items.push({
+            label: 'Save bin',
+            message: { type: 'saveBlob', blobId: parsed._hexBlobId }
+          });
         }
       } else if (isByteArray(parsed) && parsed.length <= 4096) {
         items.push({
@@ -694,6 +700,10 @@
       items.push({
         label: 'Decode as COSE Headers',
         message: { type: 'decodeAsCoseHeaders', kind: 'blobId', blobId: stripped }
+      });
+      items.push({
+        label: 'Save bin',
+        message: { type: 'saveBlob', blobId: stripped }
       });
     }
 
