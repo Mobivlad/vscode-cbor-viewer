@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - New setting `cborViewer.numericKeyFormat` (`decimal` | `hex`) to display numeric CBOR map keys / label ids as hexadecimal in the pretty and raw views
 - Opt-in custom editor registration so any file (e.g. `*.bin`) can be opened with the CBOR Viewer via "Reopen Editor With…" without it becoming the default editor
+- In-view find widget (Ctrl/Cmd+F) with match highlighting, count, and Enter/Shift+Enter navigation
 
 ## [0.7.2]
 

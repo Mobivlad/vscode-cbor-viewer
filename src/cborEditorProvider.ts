@@ -364,9 +364,76 @@ export class CborEditorProvider implements vscode.CustomReadonlyEditorProvider {
             background: var(--vscode-menu-selectionBackground);
             color: var(--vscode-menu-selectionForeground);
         }
+        .cbor-find {
+            position: fixed;
+            top: 8px;
+            right: 18px;
+            z-index: 10000;
+            display: none;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 6px;
+            background: var(--vscode-editorWidget-background);
+            color: var(--vscode-editorWidget-foreground);
+            border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+        }
+        .cbor-find.visible {
+            display: flex;
+        }
+        .cbor-find input {
+            width: 200px;
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+            border-radius: 2px;
+            padding: 3px 6px;
+            font-family: var(--vscode-font-family);
+            font-size: 12px;
+            outline: none;
+        }
+        .cbor-find input:focus {
+            border-color: var(--vscode-focusBorder);
+        }
+        .cbor-find .cbor-find-count {
+            font-size: 12px;
+            min-width: 62px;
+            text-align: center;
+            opacity: 0.85;
+        }
+        .cbor-find button {
+            border: none;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 2px;
+            font-size: 13px;
+            line-height: 1;
+        }
+        .cbor-find button:hover {
+            background: var(--vscode-toolbar-hoverBackground, var(--vscode-menu-selectionBackground));
+        }
+        mark.cbor-find-hit {
+            background: var(--vscode-editor-findMatchHighlightBackground, rgba(234,179,8,0.4));
+            color: inherit;
+            border-radius: 2px;
+        }
+        mark.cbor-find-hit.current {
+            background: var(--vscode-editor-findMatchBackground, rgba(234,92,0,0.7));
+            outline: 1px solid var(--vscode-editor-findMatchBorder, transparent);
+        }
     </style>
 </head>
 <body data-view-mode="${viewMode}" data-hex-token="${HEX_TOKEN}" data-payload-token="${PAYLOAD_TOKEN}" data-preview-hint-kinds="${previewHintKindsJson}">
+    <div id="cbor-find" class="cbor-find" role="search">
+        <input id="cbor-find-input" type="text" placeholder="Find" aria-label="Find in decoded CBOR" />
+        <span id="cbor-find-count" class="cbor-find-count">No results</span>
+        <button id="cbor-find-prev" title="Previous match (Shift+Enter)" aria-label="Previous match">&#8593;</button>
+        <button id="cbor-find-next" title="Next match (Enter)" aria-label="Next match">&#8595;</button>
+        <button id="cbor-find-close" title="Close (Escape)" aria-label="Close">&#10005;</button>
+    </div>
     <div class="header">
         <div class="filename">${this.escapeHtml(uri.fsPath.split(/[\\/]/).pop() || 'CBOR File')}</div>
         <div>Decoded CBOR Content</div>
