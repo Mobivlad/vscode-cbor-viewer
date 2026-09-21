@@ -92,6 +92,41 @@ export function decodeAllOrFirst(buffer: Buffer): unknown {
 }
 
 /**
+ * Describes a 4-byte little-endian length prefix that some producers prepend to a CBOR blob.
+ *
+ * Layout: `[u32 LE length][CBOR payload …]`, where the u32 equals the byte length of the
+ * CBOR payload that follows (i.e. `totalSize - 4`).
+ */
+export interface LengthPrefixInfo {
+    /** The u32 value read from the first 4 bytes (little-endian). */
+    declaredLength: number;
+    /** The number of CBOR payload bytes that follow the prefix (`totalSize - 4`). */
+    payloadLength: number;
+}
+
+/**
+ * Detect an optional 4-byte little-endian length prefix in front of a CBOR blob.
+ *
+ * Detection is intentionally strict: we only report a prefix when the declared length exactly
+ * matches the remaining bytes (`totalSize - 4`). This keeps false positives low because real
+ * CBOR documents rarely begin with 4 bytes that happen to equal their own trailing length.
+ *
+ * Returns `undefined` when no matching prefix is present, in which case the caller should decode
+ * the buffer as-is.
+ */
+export function detectCborLengthPrefix(buffer: Buffer): LengthPrefixInfo | undefined {
+    if (buffer.length < 5) {
+        return undefined;
+    }
+    const declaredLength = buffer.readUInt32LE(0);
+    const payloadLength = buffer.length - 4;
+    if (declaredLength !== payloadLength) {
+        return undefined;
+    }
+    return { declaredLength, payloadLength };
+}
+
+/**
  * Wrap an array of decoded CBOR items into the viewer's expected shape.
  *
  * Shared by both synchronous and streaming decode paths.

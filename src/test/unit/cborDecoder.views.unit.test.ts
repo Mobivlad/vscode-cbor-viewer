@@ -7,9 +7,37 @@
  */
 import * as assert from 'assert';
 import * as cbor from 'cbor';
-import { decodeCbor, decodeCborDecodedValueWithBlobs, decodeCborDecodedValueWithViews, decodeCborWithBlobs, decodeCborWithViews } from '../../cborDecoder';
+import { decodeCbor, decodeCborDecodedValueWithBlobs, decodeCborDecodedValueWithViews, decodeCborWithBlobs, decodeCborWithViews, detectCborLengthPrefix } from '../../cborDecoder';
 import * as fs from 'fs';
 import * as path from 'path';
+
+suite('Unit: cborDecoder length prefix detection', () => {
+    test('detects a matching 4-byte little-endian length prefix', () => {
+        const payload = Buffer.from(cbor.encodeOne({ a: 1 }));
+        const prefix = Buffer.alloc(4);
+        prefix.writeUInt32LE(payload.length, 0);
+        const framed = Buffer.concat([prefix, payload]);
+
+        const info = detectCborLengthPrefix(framed);
+        assert.ok(info, 'expected a prefix to be detected');
+        assert.strictEqual(info!.declaredLength, payload.length);
+        assert.strictEqual(info!.payloadLength, payload.length);
+    });
+
+    test('returns undefined when the declared length does not match', () => {
+        const payload = Buffer.from(cbor.encodeOne({ a: 1 }));
+        const prefix = Buffer.alloc(4);
+        prefix.writeUInt32LE(payload.length + 7, 0); // wrong length
+        const framed = Buffer.concat([prefix, payload]);
+
+        assert.strictEqual(detectCborLengthPrefix(framed), undefined);
+    });
+
+    test('returns undefined for buffers too small to hold prefix + payload', () => {
+        assert.strictEqual(detectCborLengthPrefix(Buffer.from([0x00, 0x00, 0x00, 0x00])), undefined);
+        assert.strictEqual(detectCborLengthPrefix(Buffer.alloc(0)), undefined);
+    });
+});
 
 suite('Unit: cborDecoder views (pretty/raw)', () => {
     test('decodeCborWithViews returns both pretty and raw views', () => {

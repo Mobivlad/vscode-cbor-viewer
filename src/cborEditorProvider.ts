@@ -18,10 +18,35 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as cbor from 'cbor';
-import { decodeAllOrFirst, wrapDecodedItems, decodeCborDecodedValueWithViews, DecodeViewsResult } from './cborDecoder';
+import { decodeAllOrFirst, wrapDecodedItems, decodeCborDecodedValueWithViews, detectCborLengthPrefix, DecodeViewsResult } from './cborDecoder';
 import { InMemoryFileSystemProvider } from './preview/inMemoryFileSystem';
 import { getBuiltInPreviewSystem } from './preview/getBuiltInPreviewSystem';
 import { HEX_TOKEN, PAYLOAD_TOKEN } from './preview/previewHintTokens';
+
+/**
+ * A short informational banner rendered in the editor header, above the decoded tree.
+ *
+ * Used to surface document-framing facts that aren't part of the CBOR itself, e.g. a detected
+ * 4-byte length prefix, or why decoding failed.
+ */
+interface HeaderNotice {
+    kind: 'info' | 'warning';
+    message: string;
+}
+
+/** Decoded views plus any header notices to render above the tree. */
+type DecodeDocumentResult = DecodeViewsResult & { notices: HeaderNotice[] };
+
+/**
+ * Error thrown by {@link CborEditorProvider.decodeDocument} that carries header notices so the
+ * caller can still render diagnostic context (e.g. length-prefix hints) alongside the error.
+ */
+class DecodeDocumentError extends Error {
+    constructor(message: string, readonly notices: HeaderNotice[]) {
+        super(message);
+        this.name = 'DecodeDocumentError';
+    }
+}
 
 /**
  * Custom editor provider that renders decoded CBOR as a webview.
@@ -86,6 +111,7 @@ export class CborEditorProvider implements vscode.CustomReadonlyEditorProvider {
         let decodedViews: DecodeViewsResult | undefined;
         let errorMessage: string | undefined;
         let blobs: Map<string, Buffer> = new Map();
+        let headerNotices: HeaderNotice[] = [];
         const configuredDefaultView = vscode.workspace
             .getConfiguration('cborViewer')
             .get<string>('defaultViewMode', 'pretty');
@@ -110,8 +136,12 @@ export class CborEditorProvider implements vscode.CustomReadonlyEditorProvider {
             decodedViews = decoded;
             decodedData = viewMode === 'raw' ? decoded.raw : decoded.pretty;
             blobs = decoded.blobs;
+            headerNotices = decoded.notices;
         } catch (error) {
             errorMessage = error instanceof Error ? error.message : String(error);
+            if (error instanceof DecodeDocumentError) {
+                headerNotices = error.notices;
+            }
         }
 
         webviewPanel.webview.onDidReceiveMessage(async (message) => {
@@ -206,7 +236,8 @@ export class CborEditorProvider implements vscode.CustomReadonlyEditorProvider {
             document.uri,
             decodedData,
             errorMessage,
-            viewMode
+            viewMode,
+            headerNotices
         );
 
         // Handshake: confirm the webview script is running and can post messages back.
@@ -228,6 +259,7 @@ export class CborEditorProvider implements vscode.CustomReadonlyEditorProvider {
         decodedData: unknown,
         errorMessage?: string
         , viewMode: 'pretty' | 'raw' = 'pretty'
+        , notices: HeaderNotice[] = []
     ): string {
         const scriptUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this.context.extensionUri, 'media', 'cborViewerWebview.js')
@@ -289,6 +321,23 @@ export class CborEditorProvider implements vscode.CustomReadonlyEditorProvider {
             font-weight: bold;
             font-size: 1.2em;
             margin-bottom: 5px;
+        }
+        .header-notice {
+            margin: 8px 0 0 0;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        .header-notice.info {
+            border: 1px solid var(--vscode-panel-border);
+            background: var(--vscode-textCodeBlock-background);
+            color: var(--vscode-editor-foreground);
+        }
+        .header-notice.warning {
+            border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-editorWarning-foreground));
+            background: var(--vscode-inputValidation-warningBackground, var(--vscode-textCodeBlock-background));
+            color: var(--vscode-editorWarning-foreground, var(--vscode-editor-foreground));
         }
         .error {
             color: var(--vscode-errorForeground);
@@ -437,6 +486,7 @@ export class CborEditorProvider implements vscode.CustomReadonlyEditorProvider {
     <div class="header">
         <div class="filename">${this.escapeHtml(uri.fsPath.split(/[\\/]/).pop() || 'CBOR File')}</div>
         <div>Decoded CBOR Content</div>
+        ${notices.map(n => `<div class="header-notice ${n.kind === 'warning' ? 'warning' : 'info'}">${this.escapeHtml(n.message)}</div>`).join('')}
     </div>
     <div id="webview-status" class="webview-status">CBOR Viewer: initializing webview…</div>
     <div id="webview-error" class="webview-error"></div>
@@ -448,7 +498,7 @@ export class CborEditorProvider implements vscode.CustomReadonlyEditorProvider {
 </html>`;
     }
 
-    private async decodeDocument(uri: vscode.Uri): Promise<DecodeViewsResult> {
+    private async decodeDocument(uri: vscode.Uri): Promise<DecodeDocumentResult> {
         // Some actions open virtual documents with an intent encoded in the URI query.
         // We keep the parsing logic defensive: invalid/unknown params should fall back to default viewing.
         const intent = (() => {
@@ -481,17 +531,107 @@ export class CborEditorProvider implements vscode.CustomReadonlyEditorProvider {
         };
 
         if (thresholdBytes > 0 && uri.scheme === 'file' && stat.size >= thresholdBytes) {
-            const decoded = await this.decodeLargeFileStream(uri);
+            // Peek at the first 4 bytes to detect an optional little-endian length prefix without
+            // reading the whole (large) file into memory.
+            const head = await this.readFileHead(uri, 4);
+            const declaredLength = head.length >= 4 ? head.readUInt32LE(0) : -1;
+            const hasPrefix = declaredLength >= 0 && declaredLength === stat.size - 4;
+            const notices: HeaderNotice[] = [];
+            let payloadSize = stat.size;
+            if (hasPrefix) {
+                payloadSize = stat.size - 4;
+                notices.push(this.buildLengthPrefixNotice(declaredLength, payloadSize));
+            }
+            const decoded = await this.decodeLargeFileStream(uri, hasPrefix ? 4 : 0);
             this.decodedRootByUri.set(uri.toString(), decoded);
-            return decodeCborDecodedValueWithViews(decoded, stat.size, viewOptions);
+            return { ...decodeCborDecodedValueWithViews(decoded, payloadSize, viewOptions), notices };
         }
 
         const fileData = await vscode.workspace.fs.readFile(uri);
         // Decode here so we can keep the original decoded root for intentful actions.
         const buffer = Buffer.from(fileData);
-        const decoded = decodeAllOrFirst(buffer);
-        this.decodedRootByUri.set(uri.toString(), decoded);
-        return decodeCborDecodedValueWithViews(decoded, buffer.length, viewOptions);
+        const notices: HeaderNotice[] = [];
+        const prefix = detectCborLengthPrefix(buffer);
+
+        // Strict match: the first 4 bytes declare exactly the remaining byte count.
+        if (prefix) {
+            const cborBuffer = buffer.subarray(4);
+            notices.push(this.buildLengthPrefixNotice(prefix.declaredLength, prefix.payloadLength));
+            const decoded = decodeAllOrFirst(cborBuffer);
+            this.decodedRootByUri.set(uri.toString(), decoded);
+            return { ...decodeCborDecodedValueWithViews(decoded, cborBuffer.length, viewOptions), notices };
+        }
+
+        try {
+            const decoded = decodeAllOrFirst(buffer);
+            this.decodedRootByUri.set(uri.toString(), decoded);
+            return { ...decodeCborDecodedValueWithViews(decoded, buffer.length, viewOptions), notices };
+        } catch (error) {
+            // The whole buffer isn't valid CBOR. A common cause is a 4-byte length prefix whose
+            // declared value is wrong (so the strict check above didn't strip it). If dropping the
+            // first 4 bytes yields valid CBOR, decode that payload and warn about the mismatch.
+            if (buffer.length >= 5) {
+                const payload = buffer.subarray(4);
+                try {
+                    const decoded = decodeAllOrFirst(payload);
+                    const declaredLength = buffer.readUInt32LE(0);
+                    notices.push({
+                        kind: 'warning',
+                        message:
+                            `4-byte length prefix present but its value does not match: declared ` +
+                            `0x${declaredLength.toString(16).padStart(8, '0')} = ${declaredLength} bytes, ` +
+                            `actual CBOR payload is ${payload.length} bytes. Decoded the payload anyway.`
+                    });
+                    this.decodedRootByUri.set(uri.toString(), decoded);
+                    return { ...decodeCborDecodedValueWithViews(decoded, payload.length, viewOptions), notices };
+                } catch {
+                    // Stripping the prefix didn't help either; report the original error below.
+                }
+            }
+
+            const msg = error instanceof Error ? error.message : String(error);
+            // Surface the first bytes so the user can judge whether a non-matching prefix is present.
+            if (buffer.length >= 4) {
+                const declaredLength = buffer.readUInt32LE(0);
+                notices.push({
+                    kind: 'warning',
+                    message:
+                        `No 4-byte length prefix detected: the first 4 bytes ` +
+                        `(0x${declaredLength.toString(16).padStart(8, '0')} = ${declaredLength} little-endian) ` +
+                        `do not match file size − 4 (${buffer.length - 4}).`
+                });
+            }
+            throw new DecodeDocumentError(msg, notices);
+        }
+    }
+
+    /**
+     * Build the informational banner shown when a 4-byte little-endian length prefix is detected
+     * and stripped before decoding.
+     */
+    private buildLengthPrefixNotice(declaredLength: number, payloadLength: number): HeaderNotice {
+        return {
+            kind: 'info',
+            message:
+                `Detected 4-byte little-endian length prefix: ` +
+                `0x${declaredLength.toString(16).padStart(8, '0')} = ${declaredLength} bytes. ` +
+                `Skipped 4 header bytes before decoding the ${payloadLength}-byte CBOR payload.`
+        };
+    }
+
+    /**
+     * Read the first `length` bytes of a local file without loading the whole file.
+     * Returns a possibly-shorter buffer if the file is smaller than requested.
+     */
+    private async readFileHead(uri: vscode.Uri, length: number): Promise<Buffer> {
+        const fh = await fs.promises.open(uri.fsPath, 'r');
+        try {
+            const buf = Buffer.alloc(length);
+            const { bytesRead } = await fh.read(buf, 0, length, 0);
+            return buf.subarray(0, bytesRead);
+        } finally {
+            await fh.close();
+        }
     }
 
     /**
@@ -584,11 +724,13 @@ export class CborEditorProvider implements vscode.CustomReadonlyEditorProvider {
      * Collects all decoded items to support CBOR Sequences (RFC 8742).
      * Returns a single item directly, or a cbor-sequence wrapper for multiple items.
      * Caps the number of collected items to avoid OOM on huge sequences.
+     *
+     * `startOffset` lets callers skip a leading byte prefix (e.g. a 4-byte length header).
      */
-    private async decodeLargeFileStream(uri: vscode.Uri): Promise<unknown> {
+    private async decodeLargeFileStream(uri: vscode.Uri, startOffset = 0): Promise<unknown> {
         const MAX_SEQUENCE_ITEMS = 10_000;
         return new Promise((resolve, reject) => {
-            const stream = fs.createReadStream(uri.fsPath);
+            const stream = fs.createReadStream(uri.fsPath, startOffset > 0 ? { start: startOffset } : undefined);
             const decoder = new cbor.Decoder();
             const items: unknown[] = [];
             let capped = false;
