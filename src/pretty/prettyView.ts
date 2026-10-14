@@ -1,5 +1,5 @@
 import * as cbor from 'cbor';
-import type { PrettyDecodeContext } from './context';
+import { registerBlob, type PrettyDecodeContext } from './context';
 import { createDefaultPrettyFormatterRegistry } from './defaultRegistry';
 import type { PrettyFormatterContext } from './registry';
 import { mapKeyToString, toBuffer, type NumericKeyFormat } from './util';
@@ -95,6 +95,7 @@ export function buildPrettyView(ctx: PrettyDecodeContext, decoded: unknown, tota
             formatAtDepthLimit: (v) => formatAtDepthLimit(v),
             tryDecodeEmbedded: (bytes, nextDepth) => tryDecodeEmbedded(bytes, nextDepth),
             bytesPreview: (bytes, existingBlobId) => createBytesPreview(ctx, bytes, existingBlobId),
+            registerBlob: (bytes) => registerBlob(ctx, bytes),
             mapKey: (key) => mapKeyToString(key, numericKeyFormat),
             showSignatureBytes,
             labels: {

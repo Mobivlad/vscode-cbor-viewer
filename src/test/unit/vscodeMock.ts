@@ -18,6 +18,8 @@ export interface VscodeMockState {
 
     savedFiles: Array<{ uri: any; bytes: Uint8Array }>;
     saveDialogResult?: any;
+    /** Results returned by successive `showOpenDialog` calls (consumed in order). */
+    openDialogResults: any[];
 
     configuration: Record<string, unknown>;
 
@@ -156,6 +158,7 @@ export function createVscodeMock(initial?: Partial<VscodeMockState>) {
         registeredFileSystems: [],
         registeredCustomEditors: [],
         savedFiles: [],
+        openDialogResults: [],
         configuration: {},
         activeTextEditor: undefined,
         ...initial
@@ -219,6 +222,9 @@ export function createVscodeMock(initial?: Partial<VscodeMockState>) {
             },
             showSaveDialog: async (_opts: any) => {
                 return state.saveDialogResult;
+            },
+            showOpenDialog: async (_opts: any) => {
+                return state.openDialogResults.shift();
             },
             registerCustomEditorProvider: (viewType: string, _provider: any, _opts: any) => {
                 state.registeredCustomEditors.push({ viewType });

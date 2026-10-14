@@ -287,8 +287,9 @@
               const truncate = typeof cfg.truncateChars === 'number' ? cfg.truncateChars : undefined;
               const displayPreview = truncate && preview.length > truncate ? (preview.slice(0, truncate) + '...') : preview;
               const titleAttr = cfg.titleIsFullValue ? (' title="' + escapeHtmlAttr(preview) + '"') : '';
+              const quote = cfg.displayAsButton ? '' : '"';
               out += '<a class="' + escapeHtmlAttr(cfg.cssClass) + '" href="#" data-preview-kind="' + escapeHtmlAttr(cfg.kind) + '" data-blobid="' + escapeHtmlAttr(blobId) + '"' + titleAttr + '>' +
-                '"' + escapeHtmlToken(displayPreview) + '"' +
+                quote + escapeHtmlToken(displayPreview) + quote +
                 '</a>';
               replaced = true;
               break;
@@ -388,6 +389,30 @@
       }
       pre.textContent = msg.json;
       renderFromText(msg.json);
+      return;
+    }
+
+    if (msg.type === 'verifySignatureResult' && typeof msg.blobId === 'string') {
+      const status = msg.status === 'valid' || msg.status === 'invalid' ? msg.status : 'error';
+      const links = pre.querySelectorAll('a[data-preview-kind][data-blobid]');
+      for (let i = 0; i < links.length; i++) {
+        const link = links[i];
+        if (link.getAttribute('data-blobid') !== msg.blobId) continue;
+        let badge = link.nextElementSibling;
+        if (!badge || !badge.classList.contains('verify-sig-result')) {
+          badge = document.createElement('span');
+          link.parentNode.insertBefore(badge, link.nextSibling);
+        }
+        badge.className = 'verify-sig-result ' + status;
+        badge.textContent = status === 'valid' ? '\u2714 valid' : (status === 'invalid' ? '\u2718 invalid' : '\u26A0 error');
+        badge.title = String(msg.text || '');
+        if (typeof msg.keyPath === 'string' && msg.keyPath) {
+          const keyPathEl = document.createElement('span');
+          keyPathEl.className = 'verify-sig-path';
+          keyPathEl.textContent = msg.keyPath;
+          badge.appendChild(keyPathEl);
+        }
+      }
     }
   });
 

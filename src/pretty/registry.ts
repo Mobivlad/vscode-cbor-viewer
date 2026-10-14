@@ -36,6 +36,9 @@ export interface PrettyFormatterContext {
     /** Produce a bytes preview object and register blob handles. */
     bytesPreview(bytes: Buffer, existingBlobId?: string): unknown;
 
+    /** Register raw bytes in the decode blob store (no preview object) and return its id. */
+    registerBlob(bytes: Buffer): string;
+
     /** Render a map key as an object property name, honoring the numeric key format (decimal/hex). */
     mapKey(key: unknown): string;
 

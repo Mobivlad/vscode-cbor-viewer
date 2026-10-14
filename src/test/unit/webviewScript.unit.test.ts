@@ -1003,6 +1003,46 @@ suite('Unit: webview script (media/cborViewerWebview.js)', () => {
         assert.strictEqual(posted.length, 0);
       });
 
+      test('verify-signature button renders without quotes, posts on click, and shows the result', async () => {
+        const previewHintKinds = JSON.stringify([
+          {
+            kind: 'verifySig',
+            token: '___CBOR_VERIFY_SIG___',
+            cssClass: 'verify-sig-button',
+            displayAsButton: true,
+            onClickMessage: { type: 'verifySignature', blobId: '$blobId' }
+          }
+        ]);
+        const { dom, posted } = setupDomWithPreviewHintKinds(
+          `{"signature":{"verify":"___CBOR_VERIFY_SIG___blob-9|Verify signature"},"other":{"verify":"___CBOR_VERIFY_SIG___blob-10|Verify signature"}}`,
+          previewHintKinds
+        );
+        const doc = dom.window.document;
+        const button = doc.querySelector('a.verify-sig-button[data-blobid="blob-9"]') as any;
+        assert.strictEqual(button.textContent, 'Verify signature');
+
+        button.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+        assert.ok(posted.some(m => m.type === 'verifySignature' && m.blobId === 'blob-9'));
+
+        const send = (data: any) => dom.window.dispatchEvent(new dom.window.MessageEvent('message', { data, origin: dom.window.location.origin }));
+        send({ type: 'verifySignatureResult', blobId: 'blob-9', status: 'invalid', text: 'Signature is INVALID' });
+        let badge = button.nextElementSibling as any;
+        assert.strictEqual(badge.className, 'verify-sig-result invalid');
+        assert.strictEqual(badge.title, 'Signature is INVALID');
+
+        send({ type: 'verifySignatureResult', blobId: 'blob-9', status: 'valid', text: 'ok', keyPath: 'C:\\keys\\good.pem' });
+        assert.strictEqual(doc.querySelectorAll('.verify-sig-result').length, 1);
+        badge = button.nextElementSibling as any;
+        assert.strictEqual(badge.className, 'verify-sig-result valid');
+        assert.strictEqual(badge.querySelector('.verify-sig-path').textContent, 'C:\\keys\\good.pem');
+        assert.strictEqual(badge.textContent, '\u2714 validC:\\keys\\good.pem');
+
+        send({ type: 'verifySignatureResult', blobId: 'blob-10', status: 'weird' });
+        const other = doc.querySelector('a[data-blobid="blob-10"]')!.nextElementSibling as any;
+        assert.strictEqual(other.className, 'verify-sig-result error');
+        assert.strictEqual(other.title, '');
+      });
+
       function setupDomWithFind(initialJson: string, viewMode: 'pretty' | 'raw' = 'pretty') {
         const dom = new JSDOM(`<!doctype html>
 <html><body

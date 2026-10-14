@@ -32,6 +32,8 @@ export interface PreviewCommandContext {
 export interface PreviewMessageContext {
     memFs: InMemoryFileSystemProvider;
     blobs: Map<string, Buffer>;
+    /** Post a message back to the originating webview, when available. */
+    postMessage?: (message: unknown) => Thenable<boolean>;
 }
 
 export interface PreviewWebviewMenuItemTemplate {
@@ -54,6 +56,8 @@ export interface PreviewHintKindConfig {
     truncateChars?: number;
     /** When true, sets title to the full (untruncated) value. */
     titleIsFullValue?: boolean;
+    /** When true, the webview renders the link as a button (no surrounding JSON quotes). */
+    displayAsButton?: boolean;
 }
 
 export type PreviewMessageHandler = (message: any, ctx: PreviewMessageContext) => Promise<boolean> | boolean;

@@ -173,7 +173,8 @@ export class CborEditorProvider implements vscode.CustomReadonlyEditorProvider {
             // Preview-related actions are contributed by preview extenders.
             const handledByPreview = await getBuiltInPreviewSystem().handleWebviewMessage(message, {
                 memFs: this.memFs,
-                blobs
+                blobs,
+                postMessage: (m) => webviewPanel.webview.postMessage(m)
             });
             if (handledByPreview) {
                 return;
@@ -377,6 +378,34 @@ export class CborEditorProvider implements vscode.CustomReadonlyEditorProvider {
         }
         a[data-preview-kind]:hover {
             color: var(--vscode-textLink-activeForeground);
+        }
+        a.verify-sig-button {
+            display: inline-block;
+            padding: 0 8px;
+            border-radius: 2px;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            text-decoration: none;
+            font-family: var(--vscode-font-family);
+        }
+        a.verify-sig-button:hover {
+            background: var(--vscode-button-hoverBackground);
+            color: var(--vscode-button-foreground);
+        }
+        .verify-sig-result {
+            margin-left: 8px;
+            font-weight: bold;
+        }
+        .verify-sig-result.valid {
+            color: var(--vscode-testing-iconPassed, #73c991);
+        }
+        .verify-sig-result.invalid, .verify-sig-result.error {
+            color: var(--vscode-errorForeground);
+        }
+        .verify-sig-path {
+            margin-left: 6px;
+            font-weight: normal;
+            color: var(--vscode-descriptionForeground);
         }
         a.payload-preview-link {
             display: inline-block;
