@@ -19,7 +19,8 @@ export const previewExtender: PreviewExtender = {
             contextMenuItems: [
                 { label: 'Open in Hex Editor', message: { type: 'openHexBlob', blobId: '$blobId' } },
                 { label: 'Decode as CBOR', message: { type: 'decodeAsCbor', kind: 'blobId', blobId: '$blobId' } },
-                { label: 'Decode as COSE Headers', message: { type: 'decodeAsCoseHeaders', kind: 'blobId', blobId: '$blobId' } }
+                { label: 'Decode as COSE Headers', message: { type: 'decodeAsCoseHeaders', kind: 'blobId', blobId: '$blobId' } },
+                { label: 'Save bin', message: { type: 'saveBlob', blobId: '$blobId' } }
             ]
         });
 
@@ -32,7 +33,8 @@ export const previewExtender: PreviewExtender = {
                 { label: 'Open as Text', message: { type: 'openTextBlob', blobId: '$blobId' } },
                 { label: 'Open in Hex Editor', message: { type: 'openHexBlob', blobId: '$blobId' } },
                 { label: 'Decode as CBOR', message: { type: 'decodeAsCbor', kind: 'blobId', blobId: '$blobId' } },
-                { label: 'Decode as COSE Headers', message: { type: 'decodeAsCoseHeaders', kind: 'blobId', blobId: '$blobId' } }
+                { label: 'Decode as COSE Headers', message: { type: 'decodeAsCoseHeaders', kind: 'blobId', blobId: '$blobId' } },
+                { label: 'Save bin', message: { type: 'saveBlob', blobId: '$blobId' } }
             ],
             truncateChars: 120,
             titleIsFullValue: true

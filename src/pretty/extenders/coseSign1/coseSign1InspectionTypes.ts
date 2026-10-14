@@ -7,6 +7,7 @@
  */
 import type { BytesPreview } from '../../core/bytesTypes';
 import type { ValueType } from '../../core/valueTypes';
+import type { PreviewHints } from '../../previewHints';
 
 /**
  * Viewer inspection model for COSE_Sign1.
@@ -52,5 +53,11 @@ export interface PayloadInfo {
 }
 
 export interface SignatureInfo {
+    /** "Verify signature" action label; linkified via `_previewHints.verify`. */
+    verify?: string;
+    /** Size (bytes) of the whole COSE message, when known. */
     totalSizeBytes: number;
+    /** Truncated hex/bytes preview of the signature value, when present. */
+    bytes?: BytesPreview;
+    _previewHints?: PreviewHints;
 }

@@ -15,7 +15,7 @@ import * as cbor from 'cbor';
 import { createPrettyDecodeContext, type PrettyDecodeContext } from './pretty/context';
 import { buildPrettyView } from './pretty/prettyView';
 import { createBytesPreview } from './pretty/previews/bytesPreview';
-import { asCborMap, toBuffer } from './pretty/util';
+import { asCborMap, toBuffer, numericKeyToHex, type NumericKeyFormat } from './pretty/util';
 import { createDefaultPrettyFormatterRegistry } from './pretty/defaultRegistry';
 import { LabelRegistry } from './pretty/labels/labelRegistry';
 import { registerBuiltInExtenders } from './pretty/extenders/loadBuiltInExtenders';
@@ -72,6 +72,10 @@ export interface DecodeViewsResult {
 export interface DecodeViewsOptions {
     /** Force the pretty view to interpret the root decoded value as a COSE headers map. */
     prettyRootType?: 'coseHeaders';
+    /** How numeric CBOR map keys / label ids are rendered. Defaults to 'decimal'. */
+    numericKeyFormat?: NumericKeyFormat;
+    /** Whether to surface COSE signature/tag byte values (size + hex preview). Defaults to true. */
+    showSignatureBytes?: boolean;
 }
 
 /**
@@ -85,6 +89,41 @@ export interface DecodeViewsOptions {
 export function decodeAllOrFirst(buffer: Buffer): unknown {
     const items = cbor.decodeAllSync(buffer);
     return wrapDecodedItems(items);
+}
+
+/**
+ * Describes a 4-byte little-endian length prefix that some producers prepend to a CBOR blob.
+ *
+ * Layout: `[u32 LE length][CBOR payload …]`, where the u32 equals the byte length of the
+ * CBOR payload that follows (i.e. `totalSize - 4`).
+ */
+export interface LengthPrefixInfo {
+    /** The u32 value read from the first 4 bytes (little-endian). */
+    declaredLength: number;
+    /** The number of CBOR payload bytes that follow the prefix (`totalSize - 4`). */
+    payloadLength: number;
+}
+
+/**
+ * Detect an optional 4-byte little-endian length prefix in front of a CBOR blob.
+ *
+ * Detection is intentionally strict: we only report a prefix when the declared length exactly
+ * matches the remaining bytes (`totalSize - 4`). This keeps false positives low because real
+ * CBOR documents rarely begin with 4 bytes that happen to equal their own trailing length.
+ *
+ * Returns `undefined` when no matching prefix is present, in which case the caller should decode
+ * the buffer as-is.
+ */
+export function detectCborLengthPrefix(buffer: Buffer): LengthPrefixInfo | undefined {
+    if (buffer.length < 5) {
+        return undefined;
+    }
+    const declaredLength = buffer.readUInt32LE(0);
+    const payloadLength = buffer.length - 4;
+    if (declaredLength !== payloadLength) {
+        return undefined;
+    }
+    return { declaredLength, payloadLength };
 }
 
 /**
@@ -154,6 +193,8 @@ export function decodeCborDecodedValueWithBlobs(decoded: unknown, totalSizeBytes
  */
 export function decodeCborDecodedValueWithViews(decoded: unknown, totalSizeBytes: number, options?: DecodeViewsOptions): DecodeViewsResult {
     const ctx: PrettyDecodeContext = createPrettyDecodeContext();
+    const numericKeyFormat: NumericKeyFormat = options?.numericKeyFormat ?? 'decimal';
+    const showSignatureBytes: boolean = options?.showSignatureBytes ?? true;
     const prettyInput = (() => {
         if (options?.prettyRootType === 'coseHeaders') {
             // Intentionally “wrap” the decoded value so the pretty formatter registry can
@@ -167,7 +208,7 @@ export function decodeCborDecodedValueWithViews(decoded: unknown, totalSizeBytes
         return decoded;
     })();
 
-    const pretty = buildPrettyView(ctx, prettyInput, totalSizeBytes);
+    const pretty = buildPrettyView(ctx, prettyInput, totalSizeBytes, { numericKeyFormat, showSignatureBytes });
 
     // Handle CBOR Sequences (RFC 8742) in raw view: expand each element independently.
     let raw: unknown;
@@ -178,11 +219,11 @@ export function decodeCborDecodedValueWithViews(decoded: unknown, totalSizeBytes
             _type: 'cbor-sequence',
             items: seqItems.map((item, i) => ({
                 _sequenceIndex: i,
-                value: expandCborRawValue(ctx, item, 0)
+                value: expandCborRawValue(ctx, item, 0, numericKeyFormat)
             }))
         };
     } else {
-        raw = expandCborRawValue(ctx, decoded, 0);
+        raw = expandCborRawValue(ctx, decoded, 0, numericKeyFormat);
     }
 
     // Raw view also uses bytes preview objects; materialize any preview fields from `_previewHints`.
@@ -204,9 +245,9 @@ export function decodeCborDecodedValueWithViews(decoded: unknown, totalSizeBytes
      * - Keep bytes compact via bytes preview objects.
      * - Keep runtime bounded via a depth limit.
      */
-    function expandCborRawValue(ctx: DecodeContext, value: unknown, depth: number): unknown {
+    function expandCborRawValue(ctx: DecodeContext, value: unknown, depth: number, format: NumericKeyFormat): unknown {
         if (depth >= MAX_EMBEDDED_DECODE_DEPTH) {
-            return renderRawValueAtDepthLimit(ctx, value);
+            return renderRawValueAtDepthLimit(ctx, value, format);
         }
 
         if (value instanceof (cbor as any).Tagged) {
@@ -214,7 +255,7 @@ export function decodeCborDecodedValueWithViews(decoded: unknown, totalSizeBytes
             const inner = (value as any).value;
             return {
                 _cborTag: tag,
-                value: expandCborRawValue(ctx, inner, depth + 1)
+                value: expandCborRawValue(ctx, inner, depth + 1, format)
             };
         }
 
@@ -227,15 +268,15 @@ export function decodeCborDecodedValueWithViews(decoded: unknown, totalSizeBytes
             if (isByteArray(value) && value.length > HEX_PREVIEW_BYTES) {
                 return createBytesPreview(ctx, Buffer.from(value));
             }
-            return value.map(v => expandCborRawValue(ctx, v, depth + 1));
+            return value.map(v => expandCborRawValue(ctx, v, depth + 1, format));
         }
 
         if (value instanceof Map) {
             const entries: Array<{ key: unknown; value: unknown }> = [];
             for (const [k, v] of value.entries()) {
                 entries.push({
-                    key: expandCborRawValue(ctx, k, depth + 1),
-                    value: expandCborRawValue(ctx, v, depth + 1)
+                    key: renderRawMapKey(ctx, k, depth + 1, format),
+                    value: expandCborRawValue(ctx, v, depth + 1, format)
                 });
             }
             return { _type: 'map', entries };
@@ -247,8 +288,8 @@ export function decodeCborDecodedValueWithViews(decoded: unknown, totalSizeBytes
                 const entries: Array<{ key: unknown; value: unknown }> = [];
                 for (const [k, v] of map.entries()) {
                     entries.push({
-                        key: expandCborRawValue(ctx, k, depth + 1),
-                        value: expandCborRawValue(ctx, v, depth + 1)
+                        key: renderRawMapKey(ctx, k, depth + 1, format),
+                        value: expandCborRawValue(ctx, v, depth + 1, format)
                     });
                 }
                 return { _type: 'map', entries };
@@ -256,7 +297,7 @@ export function decodeCborDecodedValueWithViews(decoded: unknown, totalSizeBytes
 
             const out: Record<string, unknown> = {};
             for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-                out[k] = expandCborRawValue(ctx, v, depth + 1);
+                out[k] = expandCborRawValue(ctx, v, depth + 1, format);
             }
             return out;
         }
@@ -265,16 +306,26 @@ export function decodeCborDecodedValueWithViews(decoded: unknown, totalSizeBytes
     }
 
     /**
+     * Render a raw-view map key, applying the numeric key format (decimal/hex) to integer keys.
+     */
+    function renderRawMapKey(ctx: DecodeContext, key: unknown, depth: number, format: NumericKeyFormat): unknown {
+        if (format === 'hex' && (typeof key === 'bigint' || (typeof key === 'number' && Number.isInteger(key)))) {
+            return numericKeyToHex(key);
+        }
+        return expandCborRawValue(ctx, key, depth, format);
+    }
+
+    /**
      * Depth-limit rendering: keep structure recognizable without trying to further expand
      * or decode embedded objects.
      */
-    function renderRawValueAtDepthLimit(ctx: DecodeContext, value: unknown): unknown {
+    function renderRawValueAtDepthLimit(ctx: DecodeContext, value: unknown, format: NumericKeyFormat): unknown {
         if (value instanceof (cbor as any).Tagged) {
             const tag = (value as any).tag;
             const inner = (value as any).value;
             return {
                 _cborTag: tag,
-                value: renderRawValueAtDepthLimit(ctx, inner)
+                value: renderRawValueAtDepthLimit(ctx, inner, format)
             };
         }
 
@@ -287,15 +338,15 @@ export function decodeCborDecodedValueWithViews(decoded: unknown, totalSizeBytes
             if (isByteArray(value) && value.length > HEX_PREVIEW_BYTES) {
                 return createBytesPreview(ctx, Buffer.from(value));
             }
-            return value.map(v => renderRawValueAtDepthLimit(ctx, v));
+            return value.map(v => renderRawValueAtDepthLimit(ctx, v, format));
         }
 
         if (value instanceof Map) {
             const entries: Array<{ key: unknown; value: unknown }> = [];
             for (const [k, v] of value.entries()) {
                 entries.push({
-                    key: renderRawValueAtDepthLimit(ctx, k),
-                    value: renderRawValueAtDepthLimit(ctx, v)
+                    key: renderRawMapKeyAtDepthLimit(ctx, k, format),
+                    value: renderRawValueAtDepthLimit(ctx, v, format)
                 });
             }
             return { _type: 'map', entries };
@@ -307,8 +358,8 @@ export function decodeCborDecodedValueWithViews(decoded: unknown, totalSizeBytes
                 const entries: Array<{ key: unknown; value: unknown }> = [];
                 for (const [k, v] of map.entries()) {
                     entries.push({
-                        key: renderRawValueAtDepthLimit(ctx, k),
-                        value: renderRawValueAtDepthLimit(ctx, v)
+                        key: renderRawMapKeyAtDepthLimit(ctx, k, format),
+                        value: renderRawValueAtDepthLimit(ctx, v, format)
                     });
                 }
                 return { _type: 'map', entries };
@@ -316,10 +367,18 @@ export function decodeCborDecodedValueWithViews(decoded: unknown, totalSizeBytes
 
             const out: Record<string, unknown> = {};
             for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-                out[k] = renderRawValueAtDepthLimit(ctx, v);
+                out[k] = renderRawValueAtDepthLimit(ctx, v, format);
             }
             return out;
         }
 
         return value;
+    }
+
+    /** Depth-limit variant of {@link renderRawMapKey}. */
+    function renderRawMapKeyAtDepthLimit(ctx: DecodeContext, key: unknown, format: NumericKeyFormat): unknown {
+        if (format === 'hex' && (typeof key === 'bigint' || (typeof key === 'number' && Number.isInteger(key)))) {
+            return numericKeyToHex(key);
+        }
+        return renderRawValueAtDepthLimit(ctx, key, format);
     }

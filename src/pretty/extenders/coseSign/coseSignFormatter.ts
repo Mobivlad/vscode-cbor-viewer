@@ -6,7 +6,7 @@
  * Each signature: [protected, unprotected, signature]
  */
 import type { PrettyFormatter, PrettyFormatterContext } from '../../registry';
-import type { CoseHeaders, CoseInspectionResult, PayloadInfo } from '../coseSign1/coseSign1InspectionTypes';
+import type { CoseHeaders, CoseInspectionResult, PayloadInfo, SignatureInfo } from '../coseSign1/coseSign1InspectionTypes';
 import { asCborMap, toBuffer } from '../../util';
 import {
     buildCoseHeadersMap,
@@ -19,6 +19,7 @@ import {
     getContentTypeString,
     unwrapCoseTag,
 } from '../../core/coseMessageCommon';
+import { getCoseAlgorithmId } from '../../core/coseVerifyTarget';
 
 const COSE_SIGN_TAG = 98;
 
@@ -34,6 +35,7 @@ interface CoseSignerInfo {
     index: number;
     protectedHeaders?: CoseHeaders;
     unprotectedHeaders?: CoseHeaders;
+    signature?: SignatureInfo;
 }
 
 function isLikelyCoseSign(value: unknown): value is unknown[] {
@@ -90,6 +92,9 @@ export const CoseSignFormatter: PrettyFormatter = {
 
         delegateAndMergeHeaders(ctx, protectedMap, unprotectedMap, protectedHeaders, unprotectedHeaders);
 
+        const payloadBytes = toBuffer(payload);
+        const payloadBlobId = payloadBytes ? ctx.registerBlob(payloadBytes) : undefined;
+
         const signatures: CoseSignerInfo[] = signaturesArray.map((sig, i) => {
             const signer: CoseSignerInfo = { index: i };
             if (Array.isArray(sig) && sig.length === 3) {
@@ -100,6 +105,15 @@ export const CoseSignFormatter: PrettyFormatter = {
                 signer.protectedHeaders = buildCoseHeadersMap(ctx, sigProtMap);
                 signer.unprotectedHeaders = buildCoseHeadersMap(ctx, sigUnprotMap);
                 delegateAndMergeHeaders(ctx, sigProtMap, sigUnprotMap, signer.protectedHeaders, signer.unprotectedHeaders);
+                const sigBytes = toBuffer(sig[2]);
+                signer.signature = buildSignatureInfo(ctx, sig[2], sigBytes?.length ?? 0, sigBytes ? {
+                    context: 'Signature',
+                    bodyProtected: protectedBytes ?? Buffer.alloc(0),
+                    signProtected: sigProtBytes ?? Buffer.alloc(0),
+                    payloadBlobId,
+                    signature: sigBytes,
+                    alg: getCoseAlgorithmId(sigProtMap, sigUnprotMap)
+                } : undefined);
                 cleanEmptyHeaders(signer);
             }
             return signer;
@@ -110,7 +124,7 @@ export const CoseSignFormatter: PrettyFormatter = {
             unprotectedHeaders,
             payload: buildPayloadInfo(ctx, payload, contentType),
             signatures,
-            signature: buildSignatureInfo(totalSizeBytes)
+            signature: buildSignatureInfo(ctx, undefined, totalSizeBytes)
         };
 
         cleanEmptyHeaders(result);

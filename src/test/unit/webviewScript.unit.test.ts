@@ -1002,4 +1002,175 @@ suite('Unit: webview script (media/cborViewerWebview.js)', () => {
         dom.window.dispatchEvent(new dom.window.MessageEvent('message', { data: { type: 'ping', t: 1 }, origin: 'https://other.test' }));
         assert.strictEqual(posted.length, 0);
       });
+
+      test('verify-signature button renders without quotes, posts on click, and shows the result', async () => {
+        const previewHintKinds = JSON.stringify([
+          {
+            kind: 'verifySig',
+            token: '___CBOR_VERIFY_SIG___',
+            cssClass: 'verify-sig-button',
+            displayAsButton: true,
+            onClickMessage: { type: 'verifySignature', blobId: '$blobId' }
+          }
+        ]);
+        const { dom, posted } = setupDomWithPreviewHintKinds(
+          `{"signature":{"verify":"___CBOR_VERIFY_SIG___blob-9|Verify signature"},"other":{"verify":"___CBOR_VERIFY_SIG___blob-10|Verify signature"}}`,
+          previewHintKinds
+        );
+        const doc = dom.window.document;
+        const button = doc.querySelector('a.verify-sig-button[data-blobid="blob-9"]') as any;
+        assert.strictEqual(button.textContent, 'Verify signature');
+
+        button.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+        assert.ok(posted.some(m => m.type === 'verifySignature' && m.blobId === 'blob-9'));
+
+        const send = (data: any) => dom.window.dispatchEvent(new dom.window.MessageEvent('message', { data, origin: dom.window.location.origin }));
+        send({ type: 'verifySignatureResult', blobId: 'blob-9', status: 'invalid', text: 'Signature is INVALID' });
+        let badge = button.nextElementSibling as any;
+        assert.strictEqual(badge.className, 'verify-sig-result invalid');
+        assert.strictEqual(badge.title, 'Signature is INVALID');
+
+        send({ type: 'verifySignatureResult', blobId: 'blob-9', status: 'valid', text: 'ok', keyPath: 'C:\\keys\\good.pem' });
+        assert.strictEqual(doc.querySelectorAll('.verify-sig-result').length, 1);
+        badge = button.nextElementSibling as any;
+        assert.strictEqual(badge.className, 'verify-sig-result valid');
+        assert.strictEqual(badge.querySelector('.verify-sig-path').textContent, 'C:\\keys\\good.pem');
+        assert.strictEqual(badge.textContent, '\u2714 validC:\\keys\\good.pem');
+
+        send({ type: 'verifySignatureResult', blobId: 'blob-10', status: 'weird' });
+        const other = doc.querySelector('a[data-blobid="blob-10"]')!.nextElementSibling as any;
+        assert.strictEqual(other.className, 'verify-sig-result error');
+        assert.strictEqual(other.title, '');
+      });
+
+      function setupDomWithFind(initialJson: string, viewMode: 'pretty' | 'raw' = 'pretty') {
+        const dom = new JSDOM(`<!doctype html>
+<html><body
+  data-view-mode="${viewMode}"
+  data-hex-token="___CBOR_HEX_LINK___"
+  data-payload-token="___CBOR_PAYLOAD_PREVIEW___"
+>
+  <div id="cbor-find" class="cbor-find">
+    <input id="cbor-find-input" type="text" />
+    <span id="cbor-find-count" class="cbor-find-count">No results</span>
+    <button id="cbor-find-prev"></button>
+    <button id="cbor-find-next"></button>
+    <button id="cbor-find-close"></button>
+  </div>
+  <div id="webview-status"></div>
+  <div id="webview-error"></div>
+  <pre id="json-content">${initialJson.replace(/</g, '&lt;')}</pre>
+  <div id="context-menu"></div>
+</body></html>`, { url: 'https://example.test' });
+
+        const posted: any[] = [];
+        (dom.window as any).acquireVsCodeApi = () => ({ postMessage: (m: any) => posted.push(m) });
+        (globalThis as any).window = dom.window as any;
+        (globalThis as any).document = dom.window.document as any;
+        (globalThis as any).HTMLElement = (dom.window as any).HTMLElement;
+        (globalThis as any).acquireVsCodeApi = (dom.window as any).acquireVsCodeApi;
+
+        const scriptPath = require.resolve('../../../media/cborViewerWebview.js');
+        delete (require.cache as any)[scriptPath];
+        require(scriptPath);
+
+        return { dom, posted };
+      }
+
+      const waitMs = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+      test('find widget: Ctrl+F opens, highlights, navigates, and Escape closes', async () => {
+        const { dom } = setupDomWithFind('{"alpha":"alpha value","beta":"alpha again"}');
+        const doc = dom.window.document;
+        const bar = doc.getElementById('cbor-find')!;
+        const input = doc.getElementById('cbor-find-input') as any;
+        const countEl = doc.getElementById('cbor-find-count')!;
+
+        doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true }));
+        assert.ok(bar.classList.contains('visible'));
+
+        input.value = 'alpha';
+        input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+        await waitMs(160);
+
+        assert.strictEqual(doc.querySelectorAll('mark.cbor-find-hit').length, 3);
+        assert.strictEqual(countEl.textContent, '1 of 3');
+        assert.ok(doc.querySelector('mark.cbor-find-hit.current'));
+
+        input.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        assert.strictEqual(countEl.textContent, '2 of 3');
+
+        input.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true }));
+        assert.strictEqual(countEl.textContent, '1 of 3');
+
+        doc.getElementById('cbor-find-prev')!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+        assert.strictEqual(countEl.textContent, '3 of 3');
+
+        doc.getElementById('cbor-find-next')!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+        assert.strictEqual(countEl.textContent, '1 of 3');
+
+        input.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        assert.ok(!bar.classList.contains('visible'));
+        assert.strictEqual(doc.querySelectorAll('mark.cbor-find-hit').length, 0);
+      });
+
+      test('find widget: no matches reports "No results"', async () => {
+        const { dom } = setupDomWithFind('{"alpha":1}');
+        const doc = dom.window.document;
+        doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true }));
+        const input = doc.getElementById('cbor-find-input') as any;
+        input.value = 'zzzznotfound';
+        input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+        await waitMs(160);
+        assert.strictEqual(doc.querySelectorAll('mark.cbor-find-hit').length, 0);
+        assert.strictEqual(doc.getElementById('cbor-find-count')!.textContent, 'No results');
+        // Enter with no matches is a no-op.
+        input.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        assert.strictEqual(doc.getElementById('cbor-find-count')!.textContent, 'No results');
+      });
+
+      test('find widget: re-applies highlights after setJson re-render', async () => {
+        const { dom } = setupDomWithFind('{"alpha":"alpha"}');
+        const doc = dom.window.document;
+        doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true }));
+        const input = doc.getElementById('cbor-find-input') as any;
+        input.value = 'alpha';
+        input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+        await waitMs(160);
+        assert.ok(doc.querySelectorAll('mark.cbor-find-hit').length >= 1);
+
+        dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+          data: { type: 'setJson', json: '{"gamma":"alpha","delta":"alpha"}', viewMode: 'raw' },
+          origin: dom.window.location.origin
+        }));
+
+        assert.strictEqual(doc.querySelectorAll('mark.cbor-find-hit').length, 2);
+      });
+
+      test('find widget: Ctrl+F is a no-op when the find bar is absent', async () => {
+        const { dom } = setupDom('{"alpha":"alpha"}');
+        const doc = dom.window.document;
+        // No find bar in default setup; must not throw and must not add marks.
+        doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true }));
+        assert.strictEqual(doc.querySelectorAll('mark.cbor-find-hit').length, 0);
+      });
+
+      test('find widget: seeds query from selection and scrolls current match (with fallback)', async () => {
+        const { dom } = setupDomWithFind('{"alpha":"alpha value"}');
+        const doc = dom.window.document;
+
+        // Make scrollIntoView throw when passed options, so the catch fallback runs.
+        (dom.window as any).HTMLElement.prototype.scrollIntoView = function (arg: any) {
+          if (arg) { throw new Error('scroll options unsupported'); }
+        };
+        // Seed the current selection so opening the bar pre-fills and highlights immediately.
+        (dom.window as any).getSelection = () => ({ toString: () => 'alpha' });
+
+        doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true }));
+
+        const input = doc.getElementById('cbor-find-input') as any;
+        assert.strictEqual(input.value, 'alpha');
+        assert.ok(doc.querySelectorAll('mark.cbor-find-hit').length >= 1);
+        assert.ok(doc.querySelector('mark.cbor-find-hit.current'));
+      });
 });

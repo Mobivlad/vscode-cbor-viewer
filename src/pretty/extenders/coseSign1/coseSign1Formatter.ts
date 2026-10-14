@@ -19,6 +19,7 @@ import {
     estimateTotalSizeBytes,
     getContentTypeString,
 } from '../../core/coseMessageCommon';
+import { getCoseAlgorithmId } from '../../core/coseVerifyTarget';
 
 /**
  * COSE_Sign1 inspection formatter.
@@ -65,11 +66,19 @@ function inspectCoseSign1(ctx: PrettyFormatterContext, data: unknown[], totalSiz
 
     delegateAndMergeHeaders(ctx, protectedMap, unprotectedMap, protectedHeaders, unprotectedHeaders);
 
+    const payloadBytes = toBuffer(payload);
+    const signatureBytes = toBuffer(data[3]);
     const result: CoseInspectionResult = {
         protectedHeaders,
         unprotectedHeaders,
         payload: buildPayloadInfo(ctx, payload, contentType),
-        signature: buildSignatureInfo(totalSizeBytes)
+        signature: buildSignatureInfo(ctx, data[3], totalSizeBytes, signatureBytes ? {
+            context: 'Signature1',
+            bodyProtected: protectedBytes ?? Buffer.alloc(0),
+            payloadBlobId: payloadBytes ? ctx.registerBlob(payloadBytes) : undefined,
+            signature: signatureBytes,
+            alg: getCoseAlgorithmId(protectedMap, unprotectedMap)
+        } : undefined)
     };
 
     cleanEmptyHeaders(result);

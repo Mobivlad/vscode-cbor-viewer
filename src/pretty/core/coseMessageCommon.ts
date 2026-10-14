@@ -20,6 +20,7 @@ import type {
 import { toInt32 } from './numeric';
 import { asCborMap, isLikelyUtf8Text, toBuffer } from '../util';
 import { buildCoseHeadersMap, mergeHeaderContributions } from '../extenders/coseSign1/coseHeaders';
+import { encodeVerifyTarget, type CoseVerifyTarget } from './coseVerifyTarget';
 
 /**
  * Unwrap a CBOR tag from a value, returning the inner value if the tag matches.
@@ -104,10 +105,35 @@ export function buildPayloadInfo(ctx: PrettyFormatterContext, payload: unknown, 
 }
 
 /**
- * Build a SignatureInfo/TagInfo model (just wraps totalSizeBytes).
+ * Build a SignatureInfo/TagInfo model.
+ *
+ * `totalSizeBytes` is the size of the whole COSE message; when the signature/tag value
+ * itself is available it is also surfaced as a bytes preview so it can be inspected.
  */
-export function buildSignatureInfo(totalSizeBytes: number): SignatureInfo {
-    return { totalSizeBytes };
+export function buildSignatureInfo(
+    ctx: PrettyFormatterContext,
+    signatureValue: unknown,
+    totalSizeBytes: number,
+    verifyTarget?: CoseVerifyTarget
+): SignatureInfo {
+    const info: SignatureInfo = verifyTarget
+        ? {
+            verify: 'Verify signature…',
+            totalSizeBytes,
+            _previewHints: { verify: { kind: 'verifySig', blobId: ctx.registerBlob(encodeVerifyTarget(verifyTarget)) } }
+        }
+        : { totalSizeBytes };
+    if (!ctx.showSignatureBytes) {
+        return info;
+    }
+    const bytes = toBuffer(signatureValue);
+    if (bytes && bytes.length > 0) {
+        const preview = ctx.bytesPreview(bytes) as any;
+        if (preview && preview._type === 'bytes') {
+            info.bytes = preview;
+        }
+    }
+    return info;
 }
 
 /**

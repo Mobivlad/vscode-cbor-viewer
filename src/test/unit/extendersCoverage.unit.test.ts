@@ -411,6 +411,42 @@ suite('Unit: extender loaders + preview extenders coverage', () => {
         assert.ok(state.executedCommands.some(c => c.command === 'vscode.openWith' && c.args?.[1] === 'cborViewer.editor'));
     });
 
+    test('preview extender: saveBlob branches', async () => {
+        const { vscode, state } = createVscodeMock();
+        mockRequire('vscode', vscode);
+
+        const { PreviewSystem } = mockRequire.reRequire('../../preview/previewSystem');
+        const { InMemoryFileSystemProvider } = mockRequire.reRequire('../../preview/inMemoryFileSystem');
+        const { previewExtender: saveBlobExt } = mockRequire.reRequire('../../preview/extenders/saveBlob/extender');
+
+        const system = new PreviewSystem();
+        saveBlobExt.register(system);
+
+        const memFs = new InMemoryFileSystemProvider('mem');
+        const blobs = new Map<string, Buffer>();
+        blobs.set('blob-1', Buffer.from([0x0a, 0x0b, 0x0c]));
+
+        // Missing blobId: handled, no save.
+        state.savedFiles.length = 0;
+        assert.strictEqual(await system.handleWebviewMessage({ type: 'saveBlob' }, { memFs, blobs }), true);
+        assert.strictEqual(state.savedFiles.length, 0);
+
+        // Missing bytes: handled, no save.
+        assert.strictEqual(await system.handleWebviewMessage({ type: 'saveBlob', blobId: 'missing' }, { memFs, blobs }), true);
+        assert.strictEqual(state.savedFiles.length, 0);
+
+        // Dialog cancelled: handled, no save.
+        state.saveDialogResult = undefined;
+        assert.strictEqual(await system.handleWebviewMessage({ type: 'saveBlob', blobId: 'blob-1' }, { memFs, blobs }), true);
+        assert.strictEqual(state.savedFiles.length, 0);
+
+        // Success: writes the selected file with the blob bytes.
+        state.saveDialogResult = (vscode as any).Uri.file('/tmp/out.bin');
+        assert.strictEqual(await system.handleWebviewMessage({ type: 'saveBlob', blobId: 'blob-1' }, { memFs, blobs }), true);
+        assert.strictEqual(state.savedFiles.length, 1);
+        assert.deepStrictEqual(Array.from(state.savedFiles[0].bytes), [0x0a, 0x0b, 0x0c]);
+    });
+
     test('preview extender loader skips hidden/node_modules and ignores invalid extenders', async () => {
         const { vscode } = createVscodeMock();
         mockRequire('vscode', vscode);

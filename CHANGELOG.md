@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- New setting `cborViewer.numericKeyFormat` (`decimal` | `hex`) to display numeric CBOR map keys / label ids as hexadecimal in the pretty and raw views
+- Opt-in custom editor registration so any file (e.g. `*.bin`) can be opened with the CBOR Viewer via "Reopen Editor With…" without it becoming the default editor
+- In-view find widget (Ctrl/Cmd+F) with match highlighting, count, and Enter/Shift+Enter navigation
+- COSE signature / tag byte value is now surfaced in the decoded output as a compact, clickable bytes preview, controlled by the new `cborViewer.showSignatureBytes` setting (default on)
+- New "Save bin" context-menu action on byte previews to save the raw byte stream to a file
+
 ## [0.7.2]
 
 ### Security

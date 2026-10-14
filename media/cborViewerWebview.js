@@ -79,7 +79,8 @@
         contextMenuItems: [
           { label: 'Open in Hex Editor', message: { type: 'openHexBlob', blobId: '$blobId' } },
           { label: 'Decode as CBOR', message: { type: 'decodeAsCbor', kind: 'blobId', blobId: '$blobId' } },
-          { label: 'Decode as COSE Headers', message: { type: 'decodeAsCoseHeaders', kind: 'blobId', blobId: '$blobId' } }
+          { label: 'Decode as COSE Headers', message: { type: 'decodeAsCoseHeaders', kind: 'blobId', blobId: '$blobId' } },
+          { label: 'Save bin', message: { type: 'saveBlob', blobId: '$blobId' } }
         ]
       },
       {
@@ -91,7 +92,8 @@
           { label: 'Open as Text', message: { type: 'openTextBlob', blobId: '$blobId' } },
           { label: 'Open in Hex Editor', message: { type: 'openHexBlob', blobId: '$blobId' } },
           { label: 'Decode as CBOR', message: { type: 'decodeAsCbor', kind: 'blobId', blobId: '$blobId' } },
-          { label: 'Decode as COSE Headers', message: { type: 'decodeAsCoseHeaders', kind: 'blobId', blobId: '$blobId' } }
+          { label: 'Decode as COSE Headers', message: { type: 'decodeAsCoseHeaders', kind: 'blobId', blobId: '$blobId' } },
+          { label: 'Save bin', message: { type: 'saveBlob', blobId: '$blobId' } }
         ],
         truncateChars: 120,
         titleIsFullValue: true
@@ -285,8 +287,9 @@
               const truncate = typeof cfg.truncateChars === 'number' ? cfg.truncateChars : undefined;
               const displayPreview = truncate && preview.length > truncate ? (preview.slice(0, truncate) + '...') : preview;
               const titleAttr = cfg.titleIsFullValue ? (' title="' + escapeHtmlAttr(preview) + '"') : '';
+              const quote = cfg.displayAsButton ? '' : '"';
               out += '<a class="' + escapeHtmlAttr(cfg.cssClass) + '" href="#" data-preview-kind="' + escapeHtmlAttr(cfg.kind) + '" data-blobid="' + escapeHtmlAttr(blobId) + '"' + titleAttr + '>' +
-                '"' + escapeHtmlToken(displayPreview) + '"' +
+                quote + escapeHtmlToken(displayPreview) + quote +
                 '</a>';
               replaced = true;
               break;
@@ -335,6 +338,9 @@
     return out;
   }
 
+  // Reassigned by the find module below; called after every (re)render so highlights persist.
+  let reapplyFindHighlights = function () {};
+
   function renderFromText(raw) {
     try {
       pre.innerHTML = highlightJson(raw);
@@ -354,6 +360,7 @@
       } else {
         postLog('info', 'CBOR Viewer rendered OK', 'viewMode=' + String(viewMode) + ' links=' + String(linkCount));
       }
+      try { reapplyFindHighlights(); } catch { /* ignore */ }
     } catch (e) {
       pre.textContent = raw || '';
       showWebviewError('CBOR Viewer: render failed', e);
@@ -382,6 +389,30 @@
       }
       pre.textContent = msg.json;
       renderFromText(msg.json);
+      return;
+    }
+
+    if (msg.type === 'verifySignatureResult' && typeof msg.blobId === 'string') {
+      const status = msg.status === 'valid' || msg.status === 'invalid' ? msg.status : 'error';
+      const links = pre.querySelectorAll('a[data-preview-kind][data-blobid]');
+      for (let i = 0; i < links.length; i++) {
+        const link = links[i];
+        if (link.getAttribute('data-blobid') !== msg.blobId) continue;
+        let badge = link.nextElementSibling;
+        if (!badge || !badge.classList.contains('verify-sig-result')) {
+          badge = document.createElement('span');
+          link.parentNode.insertBefore(badge, link.nextSibling);
+        }
+        badge.className = 'verify-sig-result ' + status;
+        badge.textContent = status === 'valid' ? '\u2714 valid' : (status === 'invalid' ? '\u2718 invalid' : '\u26A0 error');
+        badge.title = String(msg.text || '');
+        if (typeof msg.keyPath === 'string' && msg.keyPath) {
+          const keyPathEl = document.createElement('span');
+          keyPathEl.className = 'verify-sig-path';
+          keyPathEl.textContent = msg.keyPath;
+          badge.appendChild(keyPathEl);
+        }
+      }
     }
   });
 
@@ -664,6 +695,10 @@
             label: 'Decode as COSE Headers',
             message: { type: 'decodeAsCoseHeaders', kind: 'blobId', blobId: parsed._hexBlobId }
           });
+          items.push({
+            label: 'Save bin',
+            message: { type: 'saveBlob', blobId: parsed._hexBlobId }
+          });
         }
       } else if (isByteArray(parsed) && parsed.length <= 4096) {
         items.push({
@@ -690,6 +725,10 @@
       items.push({
         label: 'Decode as COSE Headers',
         message: { type: 'decodeAsCoseHeaders', kind: 'blobId', blobId: stripped }
+      });
+      items.push({
+        label: 'Save bin',
+        message: { type: 'saveBlob', blobId: stripped }
       });
     }
 
@@ -743,4 +782,185 @@
 
   document.addEventListener('click', function () { hideMenu(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hideMenu(); });
+
+  // ---------------------------------------------------------------------------
+  // Find widget: in-webview search over the rendered content (Ctrl/Cmd+F).
+  //
+  // The webview is a custom editor, so it does not get VS Code's native find.
+  // We highlight matches by wrapping them in <mark> nodes inside existing text
+  // nodes, which preserves the JSON highlighting and linkified anchors.
+  // ---------------------------------------------------------------------------
+  (function initFind() {
+    const bar = document.getElementById('cbor-find');
+    const input = document.getElementById('cbor-find-input');
+    const countEl = document.getElementById('cbor-find-count');
+    const prevBtn = document.getElementById('cbor-find-prev');
+    const nextBtn = document.getElementById('cbor-find-next');
+    const closeBtn = document.getElementById('cbor-find-close');
+    if (!bar || !input || !countEl || !prevBtn || !nextBtn || !closeBtn) {
+      return;
+    }
+
+    const HIT_CLASS = 'cbor-find-hit';
+    let hits = [];
+    let current = -1;
+    let query = '';
+
+    function clearHighlights() {
+      const marks = pre.querySelectorAll('mark.' + HIT_CLASS);
+      for (let i = 0; i < marks.length; i++) {
+        const m = marks[i];
+        const parent = m.parentNode;
+        if (!parent) continue;
+        // Replace the <mark> with its text so the DOM returns to its pre-search shape.
+        parent.replaceChild(document.createTextNode(m.textContent || ''), m);
+        parent.normalize();
+      }
+      hits = [];
+      current = -1;
+    }
+
+    function updateCount() {
+      if (!query) {
+        countEl.textContent = 'No results';
+        return;
+      }
+      countEl.textContent = hits.length === 0
+        ? 'No results'
+        : (String(current + 1) + ' of ' + String(hits.length));
+    }
+
+    function highlight(q) {
+      clearHighlights();
+      query = String(q || '');
+      if (!query) {
+        updateCount();
+        return;
+      }
+      const needle = query.toLowerCase();
+      const showText = (typeof NodeFilter !== 'undefined' && NodeFilter.SHOW_TEXT) ? NodeFilter.SHOW_TEXT : 4;
+      const walker = document.createTreeWalker(pre, showText, null);
+      const textNodes = [];
+      let n;
+      while ((n = walker.nextNode())) {
+        if (n.nodeValue && n.nodeValue.length > 0) {
+          textNodes.push(n);
+        }
+      }
+
+      for (let t = 0; t < textNodes.length; t++) {
+        const node = textNodes[t];
+        const value = node.nodeValue;
+        const lower = value.toLowerCase();
+        let idx = lower.indexOf(needle);
+        if (idx < 0) continue;
+
+        const parent = node.parentNode;
+        if (!parent) continue;
+        const frag = document.createDocumentFragment();
+        let last = 0;
+        while (idx >= 0) {
+          if (idx > last) {
+            frag.appendChild(document.createTextNode(value.slice(last, idx)));
+          }
+          const mark = document.createElement('mark');
+          mark.className = HIT_CLASS;
+          mark.textContent = value.slice(idx, idx + needle.length);
+          frag.appendChild(mark);
+          hits.push(mark);
+          last = idx + needle.length;
+          idx = lower.indexOf(needle, last);
+        }
+        if (last < value.length) {
+          frag.appendChild(document.createTextNode(value.slice(last)));
+        }
+        parent.replaceChild(frag, node);
+      }
+
+      current = hits.length > 0 ? 0 : -1;
+      focusCurrent(false);
+      updateCount();
+    }
+
+    function focusCurrent(scroll) {
+      for (let i = 0; i < hits.length; i++) {
+        if (i === current) {
+          hits[i].classList.add('current');
+        } else {
+          hits[i].classList.remove('current');
+        }
+      }
+      if (scroll && current >= 0 && hits[current] && typeof hits[current].scrollIntoView === 'function') {
+        try {
+          hits[current].scrollIntoView({ block: 'center', inline: 'nearest' });
+        } catch {
+          hits[current].scrollIntoView();
+        }
+      }
+    }
+
+    function step(delta) {
+      if (hits.length === 0) return;
+      current = (current + delta + hits.length) % hits.length;
+      focusCurrent(true);
+      updateCount();
+    }
+
+    function openBar() {
+      bar.classList.add('visible');
+      const sel = getSelectionText();
+      if (sel && sel.length <= 200) {
+        input.value = sel;
+      }
+      input.focus();
+      input.select();
+      if (input.value) {
+        highlight(input.value);
+        focusCurrent(true);
+      }
+    }
+
+    function closeBar() {
+      bar.classList.remove('visible');
+      clearHighlights();
+      query = '';
+      updateCount();
+    }
+
+    // Re-run the current search after the content re-renders (e.g. view mode toggle).
+    reapplyFindHighlights = function () {
+      if (bar.classList.contains('visible') && input.value) {
+        highlight(input.value);
+      }
+    };
+
+    let debounce = null;
+    input.addEventListener('input', function () {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(function () { highlight(input.value); }, 120);
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        step(e.shiftKey ? -1 : 1);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeBar();
+      }
+    });
+
+    prevBtn.addEventListener('click', function (e) { e.preventDefault(); step(-1); });
+    nextBtn.addEventListener('click', function (e) { e.preventDefault(); step(1); });
+    closeBtn.addEventListener('click', function (e) { e.preventDefault(); closeBar(); });
+
+    document.addEventListener('keydown', function (e) {
+      const key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+      if ((e.ctrlKey || e.metaKey) && key === 'f') {
+        e.preventDefault();
+        openBar();
+      }
+    });
+  })();
 })();
+

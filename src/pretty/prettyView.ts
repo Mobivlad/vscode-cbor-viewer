@@ -1,8 +1,8 @@
 import * as cbor from 'cbor';
-import type { PrettyDecodeContext } from './context';
+import { registerBlob, type PrettyDecodeContext } from './context';
 import { createDefaultPrettyFormatterRegistry } from './defaultRegistry';
 import type { PrettyFormatterContext } from './registry';
-import { mapKeyToString, toBuffer } from './util';
+import { mapKeyToString, toBuffer, type NumericKeyFormat } from './util';
 import { createBytesPreview } from './previews/bytesPreview';
 import { LabelRegistry } from './labels/labelRegistry';
 import { registerBuiltInExtenders } from './extenders/loadBuiltInExtenders';
@@ -13,6 +13,10 @@ const MAX_EMBEDDED_DECODE_DEPTH = 6;
 export interface BuildPrettyViewOptions {
     /** Maximum recursion depth for formatting nested values. */
     maxDepth?: number;
+    /** How numeric map keys / label ids are rendered. Defaults to 'decimal'. */
+    numericKeyFormat?: NumericKeyFormat;
+    /** Whether to surface COSE signature/tag byte values (size + hex preview). Defaults to true. */
+    showSignatureBytes?: boolean;
 }
 
 /**
@@ -32,6 +36,8 @@ export interface BuildPrettyViewOptions {
 export function buildPrettyView(ctx: PrettyDecodeContext, decoded: unknown, totalSizeBytes: number, options?: BuildPrettyViewOptions): unknown {
     const registry = createDefaultPrettyFormatterRegistry();
     const maxDepth = options?.maxDepth ?? MAX_EMBEDDED_DECODE_DEPTH;
+    const numericKeyFormat: NumericKeyFormat = options?.numericKeyFormat ?? 'decimal';
+    const showSignatureBytes: boolean = options?.showSignatureBytes ?? true;
 
     // Label registry is a lightweight extension point: extenders can register
     // well-known numeric ids without touching core formatters.
@@ -64,7 +70,7 @@ export function buildPrettyView(ctx: PrettyDecodeContext, decoded: unknown, tota
             const result: Record<string, unknown> = {};
             for (const [k, v] of value.entries()) {
                 // Keep map key policy consistent with existing behavior.
-                result[mapKeyToString(k)] = formatAtDepthLimit(v);
+                result[mapKeyToString(k, numericKeyFormat)] = formatAtDepthLimit(v);
             }
             return result;
         }
@@ -89,6 +95,9 @@ export function buildPrettyView(ctx: PrettyDecodeContext, decoded: unknown, tota
             formatAtDepthLimit: (v) => formatAtDepthLimit(v),
             tryDecodeEmbedded: (bytes, nextDepth) => tryDecodeEmbedded(bytes, nextDepth),
             bytesPreview: (bytes, existingBlobId) => createBytesPreview(ctx, bytes, existingBlobId),
+            registerBlob: (bytes) => registerBlob(ctx, bytes),
+            mapKey: (key) => mapKeyToString(key, numericKeyFormat),
+            showSignatureBytes,
             labels: {
                 getCoseHeaderName(labelId: number | null): string {
                     if (labelId === null) {

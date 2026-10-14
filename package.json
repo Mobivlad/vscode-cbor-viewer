@@ -1,6 +1,6 @@
 {
   "name": "vscode-cbor-viewer",
-  "displayName": "CBOR Viewer",
+  "displayName": "Extended CBOR Viewer",
   "version": "0.7.2",
   "description": "Decode and view CBOR-encoded files as human-readable JSON. Supports all COSE message types (Sign1, Sign, Encrypt0, Encrypt, Mac0, Mac), CBOR Sequences, countersignatures, CWT tokens, date/time tags, and typed arrays with inspection-style output for troubleshooting.",
   "publisher": "JeromyStatia",
@@ -19,7 +19,7 @@
   ],
   "contributes": {
     "configuration": {
-      "title": "CBOR Viewer",
+      "title": "Extended CBOR Viewer",
       "properties": {
         "cborViewer.streamingThresholdMiB": {
           "type": "number",
@@ -35,6 +35,24 @@
             "raw"
           ],
           "description": "Default rendering mode for the CBOR Viewer. 'pretty' shows an inspection-style view (COSE-aware, embedded decode); 'raw' shows a structure-oriented view that preserves CBOR map keys."
+        },
+        "cborViewer.numericKeyFormat": {
+          "type": "string",
+          "default": "decimal",
+          "enum": [
+            "decimal",
+            "hex"
+          ],
+          "enumDescriptions": [
+            "Show numeric CBOR map keys / label ids as decimal (e.g. 4).",
+            "Show numeric CBOR map keys / label ids as hexadecimal (e.g. 0x4)."
+          ],
+          "description": "How numeric CBOR map keys and label ids are displayed in the decoded output. 'decimal' shows them as base-10 numbers; 'hex' shows them as 0x-prefixed hexadecimal."
+        },
+        "cborViewer.showSignatureBytes": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the COSE signature / tag / authentication tag byte value (size and hex preview) in the decoded output. When disabled, only the total message size is shown."
         }
       }
     },
@@ -42,12 +60,12 @@
       {
         "command": "cborViewer.openHex",
         "title": "Open in Hex Editor",
-        "category": "CBOR Viewer"
+        "category": "Extended CBOR Viewer"
       },
       {
         "command": "cborViewer.decodeSelectionAsCbor",
         "title": "Decode Selection as CBOR",
-        "category": "CBOR Viewer"
+        "category": "Extended CBOR Viewer"
       }
     ],
     "menus": {
@@ -80,7 +98,7 @@
     "customEditors": [
       {
         "viewType": "cborViewer.editor",
-        "displayName": "CBOR Viewer",
+        "displayName": "Extended CBOR Viewer",
         "selector": [
           {
             "filenamePattern": "*.cbor"
@@ -93,6 +111,16 @@
           }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "cborViewer.editor.option",
+        "displayName": "Extended CBOR Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*"
+          }
+        ],
+        "priority": "option"
       }
     ]
   },
